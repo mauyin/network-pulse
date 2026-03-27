@@ -1,0 +1,116 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    ports: ["${POSTGRES_PORT:-5433}:5432"]
+    environment:
+      POSTGRES_DB: dvn_health
+      POSTGRES_USER: dvn
+      POSTGRES_PASSWORD: dvn_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/18/docker
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dvn -d dvn_health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports: ["${REDIS_PORT:-6380}:6379"]
+    command: redis-server --requirepass dvn_redis_password
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "dvn_redis_password", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  poller:
+    build:
+      context: .
+      dockerfile: poller/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://:dvn_redis_password@redis:6379
+      ETH_RPC_URL: ${ETH_RPC_URL}
+      ARB_RPC_URL: ${ARB_RPC_URL}
+      OPT_RPC_URL: ${OPT_RPC_URL}
+      POLYGON_RPC_URL: ${POLYGON_RPC_URL}
+      BSC_RPC_URL: ${BSC_RPC_URL}
+      BASE_RPC_URL: ${BASE_RPC_URL}
+      MANTLE_RPC_URL: ${MANTLE_RPC_URL}
+      # Fallback RPCs (optional — 2nd provider per chain)
+      ETH_RPC_URL_FALLBACK: ${ETH_RPC_URL_FALLBACK:-}
+      ARB_RPC_URL_FALLBACK: ${ARB_RPC_URL_FALLBACK:-}
+      OPT_RPC_URL_FALLBACK: ${OPT_RPC_URL_FALLBACK:-}
+      BASE_RPC_URL_FALLBACK: ${BASE_RPC_URL_FALLBACK:-}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    ports: ["${API_PORT:-3002}:3000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://dvn:dvn_password@postgres:5432/dvn_health
+      REDIS_URL: redis://:dvn_redis_password@redis:6379
+      CORS_ORIGIN: http://localhost:${DASHBOARD_PORT:-5174}
+      # RPC URLs for Config Auditor (ethers.js direct calls)
+      ETH_RPC_URL: ${ETH_RPC_URL}
+      ARB_RPC_URL: ${ARB_RPC_URL}
+      OPT_RPC_URL: ${OPT_RPC_URL}
+      POLYGON_RPC_URL: ${POLYGON_RPC_URL}
+      BSC_RPC_URL: ${BSC_RPC_URL}
+      BASE_RPC_URL: ${BASE_RPC_URL}
+      MANTLE_RPC_URL: ${MANTLE_RPC_URL}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    command: ["node", "dist/worker.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://dvn:dvn_password@postgres:5432/dvn_health
+      REDIS_URL: redis://:dvn_redis_password@redis:6379
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:${API_PORT:-3002}
+    ports: ["${DASHBOARD_PORT:-5174}:5173"]
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      VITE_API_URL: http://localhost:${API_PORT:-3002}
+
+volumes:
+  postgres_data:

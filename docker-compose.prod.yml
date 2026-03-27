@@ -1,0 +1,137 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports: []
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  redis:
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    ports: []
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  poller:
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  api:
+    ports: []
+    environment:
+      DATABASE_URL: postgres://dvn:${POSTGRES_PASSWORD}@postgres:5432/dvn_health
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      API_KEY: ${API_KEY}
+      ETH_RPC_URL: ${ETH_RPC_URL}
+      ARB_RPC_URL: ${ARB_RPC_URL}
+      OPT_RPC_URL: ${OPT_RPC_URL}
+      POLYGON_RPC_URL: ${POLYGON_RPC_URL}
+      BSC_RPC_URL: ${BSC_RPC_URL}
+      BASE_RPC_URL: ${BASE_RPC_URL}
+      MANTLE_RPC_URL: ${MANTLE_RPC_URL}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./certs:/etc/caddy/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  worker:
+    environment:
+      DATABASE_URL: postgres://dvn:${POSTGRES_PASSWORD}@postgres:5432/dvn_health
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # On-demand backfill: docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm backfill -chains ethereum -days 3
+  backfill:
+    build:
+      context: ./poller
+      dockerfile: Dockerfile
+    entrypoint: ["/bin/backfill"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://dvn:${POSTGRES_PASSWORD}@postgres:5432/dvn_health?sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      ETH_RPC_URL: ${ETH_RPC_URL}
+      ARB_RPC_URL: ${ARB_RPC_URL}
+      OPT_RPC_URL: ${OPT_RPC_URL}
+      POLYGON_RPC_URL: ${POLYGON_RPC_URL}
+      BSC_RPC_URL: ${BSC_RPC_URL}
+      BASE_RPC_URL: ${BASE_RPC_URL}
+      MANTLE_RPC_URL: ${MANTLE_RPC_URL}
+    profiles: ["backfill"]
+
+  # Dashboard served by Vercel — not needed in production
+  dashboard:
+    profiles: ["disabled"]
+
+volumes:
+  caddy_data:
+  caddy_config:

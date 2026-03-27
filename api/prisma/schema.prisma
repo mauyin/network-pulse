@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Note: chain_events is a plain PostgreSQL table without a traditional PK.
+// Access via prisma.$queryRaw only.
+
+model Message {
+  guid                 Bytes    @id
+  srcEid               Int      @map("src_eid")
+  dstEid               Int      @map("dst_eid")
+  sender               Bytes
+  receiver             Bytes
+  nonce                BigInt
+  status               String   @default("sent")
+  sentBlockNumber      BigInt?  @map("sent_block_number")
+  sentTxHash           Bytes?   @map("sent_tx_hash")
+  sentAt               DateTime? @map("sent_at") @db.Timestamptz
+  firstVerifiedAt      DateTime? @map("first_verified_at") @db.Timestamptz
+  fullyVerifiedAt      DateTime? @map("fully_verified_at") @db.Timestamptz
+  deliveredAt          DateTime? @map("delivered_at") @db.Timestamptz
+  deliveredTxHash      Bytes?   @map("delivered_tx_hash")
+  verificationLatencyS Float?   @map("verification_latency_s")
+  deliveryLatencyS     Float?   @map("delivery_latency_s")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  verifications DvnVerification[]
+
+  @@map("messages")
+  @@index([status], name: "idx_messages_status")
+  @@index([srcEid, dstEid], name: "idx_messages_pathway")
+  @@index([sentAt], name: "idx_messages_sent_at")
+  @@index([srcEid, sender, nonce], name: "idx_messages_origin")
+}
+
+model DvnVerification {
+  id                   BigInt   @id @default(autoincrement())
+  messageGuid          Bytes?   @map("message_guid")
+  dvnAddress           Bytes    @map("dvn_address")
+  srcEid               Int      @map("src_eid")
+  dstEid               Int      @map("dst_eid")
+  verifiedAt           DateTime @map("verified_at") @db.Timestamptz
+  verificationLatencyS Float    @map("verification_latency_s")
+  blockNumber          BigInt   @map("block_number")
+  txHash               Bytes    @map("tx_hash")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  message Message? @relation(fields: [messageGuid], references: [guid])
+
+  @@map("dvn_verifications")
+  @@index([srcEid, dstEid, dvnAddress, verifiedAt], name: "idx_dvn_verif_analytics")
+  @@index([dvnAddress], name: "idx_dvn_verif_dvn")
+  @@index([verifiedAt], name: "idx_dvn_verif_time")
+}
+
+model DvnProvider {
+  id                String   @id
+  canonicalName     String   @map("canonical_name")
+  deprecated        Boolean  @default(false)
+  lzReadCompatible  Boolean  @default(false) @map("lz_read_compatible")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  addresses DvnAddress[]
+
+  @@map("dvn_providers")
+}
+
+model DvnAddress {
+  address    Bytes   @db.ByteA
+  eid        Int
+  providerId String  @map("provider_id")
+  version    Int     @default(2)
+  deprecated Boolean @default(false)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  provider DvnProvider @relation(fields: [providerId], references: [id])
+
+  @@id([address, eid])
+  @@index([providerId], name: "idx_dvn_addresses_provider")
+  @@index([eid], name: "idx_dvn_addresses_eid")
+  @@map("dvn_addresses")
+}
+
+model Alert {
+  id          BigInt    @id @default(autoincrement())
+  alertType   String    @map("alert_type")
+  severity    String
+  srcEid      Int?      @map("src_eid")
+  dstEid      Int?      @map("dst_eid")
+  dvnAddress  Bytes?    @map("dvn_address")
+  messageGuid Bytes?    @map("message_guid")
+  reason      String
+  metadata    Json?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz
+  isActive    Boolean   @default(true) @map("is_active")
+
+  @@map("alerts")
+  @@index([isActive, createdAt(sort: Desc)], name: "idx_alerts_active")
+  @@index([srcEid, dstEid], name: "idx_alerts_pathway")
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  name        String    // human-readable label (e.g. "My OApp Monitor")
+  rateLimit   Int       @default(100) @map("rate_limit") // requests per minute
+  isActive    Boolean   @default(true) @map("is_active")
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("api_keys")
+  @@index([key], name: "idx_api_keys_key")
+}
+
+model AlertSubscription {
+  id              String    @id @default(cuid())
+  pathwaySrcEid   Int?      @map("pathway_src_eid")
+  pathwayDstEid   Int?      @map("pathway_dst_eid")
+  dvnAddress      Bytes?    @map("dvn_address")
+  thresholdType   String    @map("threshold_type") // 'health_score', 'latency', 'stuck_message'
+  thresholdValue  Float     @map("threshold_value")
+  webhookUrl      String    @map("webhook_url")
+  webhookSecret   String?   @map("webhook_secret")
+  isActive        Boolean   @default(true) @map("is_active")
+  lastTriggeredAt DateTime? @map("last_triggered_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("alert_subscriptions")
+  @@index([pathwaySrcEid, pathwayDstEid], name: "idx_alert_subs_pathway")
+  @@index([isActive], name: "idx_alert_subs_active")
+}

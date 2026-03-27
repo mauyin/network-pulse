@@ -1,0 +1,22 @@
+{
+  "name": "network-pulse",
+  "version": "0.1.0",
+  "description": "CLI validator for LayerZero OApp DVN configurations",
+  "type": "module",
+  "bin": {
+    "network-pulse": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "chalk": "^5.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  },
+  "files": ["dist/"]
+}

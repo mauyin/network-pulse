@@ -1,0 +1,40 @@
+# Environment
+.env
+.env.local
+
+# Go
+poller/bin/
+poller/tmp/
+poller/backfill
+poller/poller
+
+# Node
+node_modules/
+api/node_modules/
+dashboard/node_modules/
+api/dist/
+dashboard/dist/
+
+# Generated
+schemas/generated/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+postgres_data/
+
+# Local tooling
+.gstack/
+.claude/
+
+# TLS certificates
+certs/

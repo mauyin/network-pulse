@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "packet-verified",
+  "title": "PacketVerified",
+  "description": "Event emitted when a DVN verifies a cross-chain message on the destination chain",
+  "type": "object",
+  "required": [
+    "event_type", "chain_id", "block_number", "tx_hash", "log_index",
+    "block_timestamp", "src_eid", "sender", "nonce", "dvn_address"
+  ],
+  "properties": {
+    "event_type": { "const": "PacketVerified" },
+    "chain_id": { "type": "integer", "description": "Destination chain ID" },
+    "block_number": { "type": "integer" },
+    "tx_hash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+    "log_index": { "type": "integer" },
+    "block_timestamp": { "type": "integer", "description": "Unix timestamp" },
+    "src_eid": { "type": "integer", "description": "LayerZero source endpoint ID (from Origin)" },
+    "sender": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$", "description": "Original sender (from Origin)" },
+    "nonce": { "type": "integer", "description": "Message nonce (from Origin)" },
+    "dvn_address": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$", "description": "DVN that submitted the verification" },
+    "receiver": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+    "payload_hash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+    "ingestion_timestamp": { "type": "integer", "description": "Unix timestamp when poller saw this event" }
+  },
+  "additionalProperties": false
+}
